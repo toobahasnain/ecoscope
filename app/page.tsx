@@ -27,6 +27,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'overview' | 'phases' | 'waste' | 'ai' | 'scenario11'>('overview');
   const [whatIfOverlap, setWhatIfOverlap] = useState(20);
   const [whatIfIdle, setWhatIfIdle] = useState(25);
+ 
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = async (files: FileList) => {

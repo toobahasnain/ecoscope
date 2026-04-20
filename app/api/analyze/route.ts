@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeScenario, buildReferenceProfiles, generateScenario11, ScenarioAnalysis } from '@/app/lib/analyze';
-
+export const runtime = 'edge';
 export async function POST(request: NextRequest) {
   try {
     const { rows, allTrainingRows, allAnalyses } = await request.json();
