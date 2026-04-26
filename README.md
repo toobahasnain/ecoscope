@@ -2,7 +2,7 @@
 
 > AI-powered energy optimization assistant for ZEISS microscope workflows — Re_Make Hackathon 2026 Winner 🏆
 
-**[→ Live Demo](#)** | Built at Das Habitat Augsburg | April 20–21, 2026
+**[→ Live Demo](https://ecoscope-five.vercel.app/)** | Built at Das Habitat Augsburg | April 20–21, 2026
 
 ---
 
