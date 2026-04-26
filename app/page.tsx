@@ -627,7 +627,7 @@ const currentAnalysis = selectedIdx !== null
 )}
            
          
-{activeTab === 'compare' && (
+{activeTab === 'compare' && currentAnalysis && (
   <div style={{display:'grid', gap:'20px'}}>
     <div style={{background:'white', borderRadius:'12px', padding:'20px'}}>
       <h3 style={{fontSize:'16px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 4px'}}>📊 Baseline vs Improved</h3>
