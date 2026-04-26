@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PRETRAINED_PROFILES } from '@/app/lib/trainingProfiles';
 import { analyzeScenario, buildReferenceProfiles, generateScenario11, calculateAccuracy, ScenarioAnalysis } from '@/app/lib/analyze';
 export const runtime = 'edge';
+export const runtime = 'nodejs';
 console.log('=== ANALYZE ROUTE CALLED ===');
 console.log('Request received');
 export async function POST(request: NextRequest) {
