@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Papa from 'papaparse';
 import { ScenarioAnalysis, getEnergyLabel } from './lib/analyze';
 import {
@@ -33,7 +33,38 @@ export default function Home() {
 const [chatMessages, setChatMessages] = useState<{role:'user'|'ai', text:string}[]>([]);
 const [chatInput, setChatInput] = useState('');
 const [chatLoading, setChatLoading] = useState(false);
+useEffect(() => {
+  const loadDefaultScenarios = async () => {
+    const files = [
+      { name: 'S13_low_priority_screening_mode_v4', url: '/data/S13_low_priority_screening_mode_v4.csv' },
+      { name: 'S15_percentage_case_with_phase_assigned', url: '/data/S15_percentage_case_with_phase_assigned.csv' },
+    ];
 
+    const newScenarios: { name: string; rows: Record<string, string>[] }[] = [];
+
+    for (const file of files) {
+      try {
+        const res = await fetch(file.url);
+        const text = await res.text();
+        const Papa = (await import('papaparse')).default;
+        const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+        newScenarios.push({
+          name: file.name,
+          rows: result.data as Record<string, string>[]
+        });
+      } catch (e) {
+        console.log('Could not load:', file.name);
+      }
+    }
+
+    if (newScenarios.length > 0) {
+      setScenarios(newScenarios);
+      setTrainingScenarios(new Set());
+    }
+  };
+
+  loadDefaultScenarios();
+}, []);
 const sendChatMessage = async (text: string) => {
   if (!text.trim() || chatLoading || !currentAnalysis) return;
   setChatMessages(prev => [...prev, {role:'user', text}]);
