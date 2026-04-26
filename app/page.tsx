@@ -84,10 +84,10 @@ TRAINING KNOWLEDGE (learned from S1-S10):
 - Best scenario from training: S2 (low energy deferred batch) was most efficient overall
 
 CURRENT TEST SCENARIO: ${currentAnalysis.scenarioName}
-Total Energy: ${currentAnalysis.totalEnergyWh} Wh
-Potential Saving: ${currentAnalysis.totalPotentialSavingWh} Wh (${currentAnalysis.savingPct}%)
-Energy Label: ${currentAnalysis.energyLabel}
-Phases: ${currentAnalysis.phases.map(p => `${p.phase}: ${p.totalEnergy} Wh, ${p.avgPower}W avg, saving ${p.potentialSavingWh} Wh`).join(' | ')}
+Total Energy: ${currentAnalysis?.totalEnergyWh} Wh
+Potential Saving: ${currentAnalysis?.totalPotentialSavingWh} Wh (${currentAnalysis?.savingPct}%)
+Energy Label: ${currentAnalysis?.energyLabel}
+Phases: ${currentAnalysis?.phases.map(p => `${p.phase}: ${p.totalEnergy} Wh, ${p.avgPower}W avg, saving ${p.potentialSavingWh} Wh`).join(' | ')}
 Waste: ${currentAnalysis.wasteFlags.map(w => `${w.type}: ${w.description} (${w.rStrategy})`).join(' | ')}
 Answer in 2-3 sentences. Be specific with numbers.`;
    const res = await fetch('/api/chat-eco', {
@@ -188,10 +188,10 @@ const currentAnalysis = selectedIdx !== null
   ? analyses[analyses.length - 1]
   : null;
 
-  const energyInfo = currentAnalysis ? getEnergyLabel(currentAnalysis.savingPct) : null;
+  const energyInfo = currentAnalysis ? getEnergyLabel(currentAnalysis?.savingPct) : null;
 
   const whatIfSaving = currentAnalysis ? (() => {
-    const base = currentAnalysis.totalEnergyWh;
+    const base = currentAnalysis?.totalEnergyWh;
     const overlapSaving = ((whatIfOverlap - 10) / 20) * base * 0.15;
     const idleSaving = (whatIfIdle / 100) * base * 0.20;
     return Math.round((overlapSaving + idleSaving) * 100) / 100;
@@ -368,9 +368,9 @@ const currentAnalysis = selectedIdx !== null
               {/* Metric cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '24px' }}>
                 {[
-                  { label: 'Total Energy', value: `${currentAnalysis.totalEnergyWh} Wh`, color: ZEISS_BLUE },
-                  { label: 'Potential Saving', value: `${currentAnalysis.totalPotentialSavingWh} Wh`, color: '#8DC63F' },
-                  { label: 'Saving %', value: `${currentAnalysis.savingPct}%`, color: '#F26522' },
+                  { label: 'Total Energy', value: `${currentAnalysis?.totalEnergyWh} Wh`, color: ZEISS_BLUE },
+                  { label: 'Potential Saving', value: `${currentAnalysis?.totalPotentialSavingWh} Wh`, color: '#8DC63F' },
+                  { label: 'Saving %', value: `${currentAnalysis?.savingPct}%`, color: '#F26522' },
                   { label: 'Waste Flags', value: `${currentAnalysis.wasteFlags.length}`, color: '#ED1C24' },
                 ].map(card => (
                   <div key={card.label} style={{ background: 'white', borderRadius: '10px', padding: '16px', borderTop: `3px solid ${card.color}` }}>
@@ -396,7 +396,7 @@ const currentAnalysis = selectedIdx !== null
                   <div style={{ background: 'white', borderRadius: '12px', padding: '20px' }}>
                     <h3 style={{ fontSize: '14px', fontWeight: 700, color: ZEISS_BLUE, margin: '0 0 16px' }}>Energy by Phase (Wh)</h3>
                     <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={currentAnalysis.phases.map(p => ({ name: p.phase.replace('_', ' '), energy: p.totalEnergy, saving: p.potentialSavingWh }))}>
+                      <BarChart data={currentAnalysis?.phases.map(p => ({ name: p.phase.replace('_', ' '), energy: p.totalEnergy, saving: p.potentialSavingWh }))}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f4f8" />
                         <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                         <YAxis tick={{ fontSize: 10 }} />
@@ -410,7 +410,7 @@ const currentAnalysis = selectedIdx !== null
                   <div style={{ background: 'white', borderRadius: '12px', padding: '20px' }}>
                     <h3 style={{ fontSize: '14px', fontWeight: 700, color: ZEISS_BLUE, margin: '0 0 16px' }}>Phase Performance Radar</h3>
                     <ResponsiveContainer width="100%" height={220}>
-                      <RadarChart data={currentAnalysis.phases.map(p => ({ phase: p.phase.split('_')[0], cpu: p.avgCpuPct, gpu: p.avgGpuPower, power: p.avgPower / 3 }))}>
+                      <RadarChart data={currentAnalysis?.phases.map(p => ({ phase: p.phase.split('_')[0], cpu: p.avgCpuPct, gpu: p.avgGpuPower, power: p.avgPower / 3 }))}>
                         <PolarGrid />
                         <PolarAngleAxis dataKey="phase" tick={{ fontSize: 10 }} />
                         <PolarRadiusAxis tick={{ fontSize: 9 }} />
@@ -457,8 +457,8 @@ const currentAnalysis = selectedIdx !== null
       <span style={{ background: '#FEE2E2', color: '#DC2626', fontSize: '12px', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>🔴 High Waste</span>
     </div>
 
-    {currentAnalysis.phases.map(phase => {
-      const maxEnergy = Math.max(...currentAnalysis.phases.map(p => p.totalEnergy));
+    {currentAnalysis?.phases.map(phase => {
+      const maxEnergy = Math.max(...currentAnalysis?.phases.map(p => p.totalEnergy));
       const energyPct = Math.round((phase.totalEnergy / maxEnergy) * 100);
       const isHighWaste = phase.potentialSavingWh > phase.totalEnergy * 0.2;
       const isAboveAvg = phase.potentialSavingWh > phase.totalEnergy * 0.1;
@@ -636,13 +636,13 @@ const currentAnalysis = selectedIdx !== null
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'20px'}}>
         <div style={{background:'#FEF2F2', borderRadius:'10px', padding:'16px', border:'1px solid #FECACA'}}>
           <p style={{fontSize:'11px', fontWeight:700, color:'#DC2626', margin:'0 0 8px', textTransform:'uppercase'}}>🔴 Baseline (Current)</p>
-          <p style={{fontSize:'28px', fontWeight:900, color:'#DC2626', margin:'0 0 4px'}}>{currentAnalysis.totalEnergyWh} Wh</p>
+          <p style={{fontSize:'28px', fontWeight:900, color:'#DC2626', margin:'0 0 4px'}}>{currentAnalysis?.totalEnergyWh} Wh</p>
           <p style={{fontSize:'12px', color:'#64748b', margin:0}}>Total energy consumed</p>
-          <p style={{fontSize:'14px', fontWeight:700, color:'#DC2626', margin:'8px 0 0'}}>Label: {currentAnalysis.energyLabel}</p>
+          <p style={{fontSize:'14px', fontWeight:700, color:'#DC2626', margin:'8px 0 0'}}>Label: {currentAnalysis?.energyLabel}</p>
         </div>
         <div style={{background:'#F0FDF4', borderRadius:'10px', padding:'16px', border:'1px solid #BBF7D0'}}>
           <p style={{fontSize:'11px', fontWeight:700, color:'#059669', margin:'0 0 8px', textTransform:'uppercase'}}>✅ Improved (After Optimization)</p>
-          <p style={{fontSize:'28px', fontWeight:900, color:'#059669', margin:'0 0 4px'}}>{(currentAnalysis.totalEnergyWh - currentAnalysis.totalPotentialSavingWh).toFixed(2)} Wh</p>
+          <p style={{fontSize:'28px', fontWeight:900, color:'#059669', margin:'0 0 4px'}}>{(currentAnalysis?.totalEnergyWh - currentAnalysis?.totalPotentialSavingWh).toFixed(2)} Wh</p>
           <p style={{fontSize:'12px', color:'#64748b', margin:0}}>After applying all recommendations</p>
           <p style={{fontSize:'14px', fontWeight:700, color:'#059669', margin:'8px 0 0'}}>Label: A+</p>
         </div>
@@ -650,13 +650,13 @@ const currentAnalysis = selectedIdx !== null
 
       <div style={{background:'#EFF6FF', borderRadius:'10px', padding:'16px', marginBottom:'20px', textAlign:'center'}}>
         <p style={{fontSize:'14px', color:'#64748b', margin:'0 0 4px'}}>Total Energy Saving</p>
-        <p style={{fontSize:'36px', fontWeight:900, color:ZEISS_BLUE, margin:'0 0 4px'}}>{currentAnalysis.totalPotentialSavingWh} Wh</p>
-        <p style={{fontSize:'14px', color:'#059669', fontWeight:700, margin:0}}>↓ {currentAnalysis.savingPct}% reduction — equivalent to {Math.round(currentAnalysis.totalPotentialSavingWh / 100)} hours of laptop usage</p>
+        <p style={{fontSize:'36px', fontWeight:900, color:ZEISS_BLUE, margin:'0 0 4px'}}>{currentAnalysis?.totalPotentialSavingWh} Wh</p>
+        <p style={{fontSize:'14px', color:'#059669', fontWeight:700, margin:0}}>↓ {currentAnalysis?.savingPct}% reduction — equivalent to {Math.round(currentAnalysis?.totalPotentialSavingWh / 100)} hours of laptop usage</p>
       </div>
 
       <div style={{display:'grid', gap:'10px'}}>
         <p style={{fontSize:'13px', fontWeight:700, color:'#374151', margin:0}}>Phase-by-phase comparison:</p>
-        {currentAnalysis.phases.map(phase => {
+        {currentAnalysis?.phases.map(phase => {
           const improved = phase.totalEnergy - phase.potentialSavingWh;
           const pct = Math.round((phase.potentialSavingWh / phase.totalEnergy) * 100);
           return (
@@ -703,7 +703,7 @@ const currentAnalysis = selectedIdx !== null
       <p style={{fontSize:'13px', color:ZEISS_BLUE, fontWeight:600, margin:0}}>✅ This is real-world mode — exactly how EcoScope works in production</p>
     </div>
     <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'10px', marginTop:'16px'}}>
-      {currentAnalysis.phases.map(p => (
+      {currentAnalysis?.phases.map(p => (
         <div key={p.phase} style={{background:'#f8fafc', borderRadius:'8px', padding:'12px', borderLeft:`3px solid ${PHASE_COLORS[p.phase] || '#64748b'}`}}>
           <p style={{fontSize:'10px', color:'#64748b', margin:'0 0 4px'}}>{p.phase.replace(/_/g, ' ')}</p>
           <p style={{fontSize:'13px', fontWeight:700, color:ZEISS_BLUE, margin:0}}>{p.recommendedAction.replace(/_/g, ' ')}</p>
