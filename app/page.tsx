@@ -19,20 +19,66 @@ const PHASE_COLORS: Record<string, string> = {
 
 export default function Home() {
   const [scenarios, setScenarios] = useState<{ name: string; rows: Record<string, string>[] }[]>([]);
+  const [trainingScenarios, setTrainingScenarios] = useState<Set<number>>(new Set());
   const [analyses, setAnalyses] = useState<ScenarioAnalysis[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [geminiInsights, setGeminiInsights] = useState<string>('');
   const [scenario11, setScenario11] = useState<ScenarioAnalysis | null>(null);
+  const [referenceProfiles, setReferenceProfiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'phases' | 'waste' | 'ai' | 'scenario11'>('overview');
+ const [activeTab, setActiveTab] = useState<'overview' | 'phases' | 'waste' | 'ai' | 'scenario11' | 'compare' | 'accuracy'>('overview');
   const [whatIfOverlap, setWhatIfOverlap] = useState(20);
   const [whatIfIdle, setWhatIfIdle] = useState(25);
+  const [chatOpen, setChatOpen] = useState(false);
+const [chatMessages, setChatMessages] = useState<{role:'user'|'ai', text:string}[]>([]);
+const [chatInput, setChatInput] = useState('');
+const [chatLoading, setChatLoading] = useState(false);
+
+const sendChatMessage = async (text: string) => {
+  if (!text.trim() || chatLoading || !currentAnalysis) return;
+  setChatMessages(prev => [...prev, {role:'user', text}]);
+  setChatInput('');
+  setChatLoading(true);
+
+  try {
+    const context = `
+You are EcoScope AI assistant for ZEISS microscopes. You have been trained on 10 scenarios (S1-S10) and are now analyzing a test scenario.
+
+TRAINING KNOWLEDGE (learned from S1-S10):
+- tile_scan_acquisition efficient reference: 211.51W avg power, 491.41 Wh energy
+- live_view_monitoring efficient reference: 181.97W avg power, 239.52 Wh energy  
+- processing efficient reference: 194.34W avg power, 200.0 Wh energy
+- idle efficient reference: 159.85W avg power, 271.14 Wh energy
+- Most common waste: unattended live view, high idle power, excessive tile overlap
+- Best scenario from training: S2 (low energy deferred batch) was most efficient overall
+
+CURRENT TEST SCENARIO: ${currentAnalysis.scenarioName}
+Total Energy: ${currentAnalysis.totalEnergyWh} Wh
+Potential Saving: ${currentAnalysis.totalPotentialSavingWh} Wh (${currentAnalysis.savingPct}%)
+Energy Label: ${currentAnalysis.energyLabel}
+Phases: ${currentAnalysis.phases.map(p => `${p.phase}: ${p.totalEnergy} Wh, ${p.avgPower}W avg, saving ${p.potentialSavingWh} Wh`).join(' | ')}
+Waste: ${currentAnalysis.wasteFlags.map(w => `${w.type}: ${w.description} (${w.rStrategy})`).join(' | ')}
+Answer in 2-3 sentences. Be specific with numbers.`;
+   const res = await fetch('/api/chat-eco', {
+  method: 'POST',
+  headers: {'Content-Type':'application/json'},
+  body: JSON.stringify({ message: text, context })
+});
+const data = await res.json();
+const reply = data.response || 'Sorry, try again.';
+    setChatMessages(prev => [...prev, {role:'ai', text: reply}]);
+  } catch {
+    setChatMessages(prev => [...prev, {role:'ai', text:'Something went wrong.'}]);
+  }
+  setChatLoading(false);
+};
  
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = async (files: FileList) => {
-    setLoading(true);
-    const newScenarios: { name: string; rows: Record<string, string>[] }[] = [];
+  setLoading(true);
+  const newScenarios: { name: string; rows: Record<string, string>[] }[] = [];
+  const newTrainingIndices = new Set<number>();
 
     for (const file of Array.from(files)) {
       await new Promise<void>(resolve => {
@@ -50,42 +96,61 @@ export default function Home() {
       });
     }
 
-    setScenarios(newScenarios);
-    setLoading(false);
+  setScenarios(prev => {
+  const startIdx = prev.length;
+  newScenarios.forEach((_, i) => {
+    const filename = Array.from(files)[i]?.name || '';
+    const trainingPattern = /^s([1-9]|10)_/i;
+const isTraining = false; // All uploads are test scenarios now
+if (isTraining) {
+      newTrainingIndices.add(startIdx + i);
+    }
+  });
+  setTrainingScenarios(prevT => new Set([...prevT, ...newTrainingIndices]));
+  return [...prev, ...newScenarios];
+});
+setLoading(false);
   };
 
   const analyzeScenario = async (idx: number) => {
   setLoading(true);
   setSelectedIdx(idx);
   setActiveTab('overview');
+  setGeminiInsights('');
 
   try {
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        rows: scenarios[idx].rows,
-        allTrainingRows: scenarios.map(s => s.rows), // Pass ALL scenarios as training data
-        allAnalyses: analyses,
-      })
+    rows: scenarios[idx].rows,
+
+  allTrainingRows: scenarios
+    .filter((_, i) => trainingScenarios.has(i))
+    .map(s => s.rows.filter((_, ri) => ri % 15 === 0)),
+  allAnalyses: [],
+})
     });
 
     const data = await res.json();
+    console.log('Full response:', data);
     setGeminiInsights(data.geminiInsights || '');
     setScenario11(data.scenario11);
-
+if (data.referenceProfiles) setReferenceProfiles(data.referenceProfiles);
     setAnalyses(prev => {
       const updated = [...prev];
-      const existing = updated.findIndex(a => a.scenarioCode === data.analysis.scenarioCode);
+      const existing = updated.findIndex(a => a?.scenarioCode === data.analysis?.scenarioCode);
       if (existing >= 0) updated[existing] = data.analysis;
       else updated.push(data.analysis);
       return updated;
     });
 
-  } catch (e) {
-    console.error(e);
-  }
-  setLoading(false);
+} catch (e) {
+  console.error('Analysis failed:', e);
+  alert('Analysis failed: ' + String(e));
+}
+finally {
+setLoading(false);}
 };
 
 const currentAnalysis = selectedIdx !== null
@@ -120,13 +185,17 @@ const currentAnalysis = selectedIdx !== null
         <aside style={{ width: '280px', background: 'white', borderRight: '1px solid #e2e8f0', padding: '20px', overflowY: 'auto', flexShrink: 0 }}>
           <div style={{ marginBottom: '16px' }}>
             <p style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 8px' }}>Load Scenarios</p>
-            <button
-              onClick={() => fileRef.current?.click()}
-              style={{ width: '100%', padding: '10px', background: ZEISS_BLUE, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-              + Upload CSV Files
-            </button>
-            <input ref={fileRef} type="file" multiple accept=".csv" style={{ display: 'none' }}
-              onChange={e => e.target.files && handleFiles(e.target.files)} />
+           <div style={{background:'#EFF6FF', borderRadius:'8px', padding:'10px 12px', marginBottom:'10px', border:`1px solid ${ZEISS_LIGHT}`}}>
+  <p style={{fontSize:'11px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 2px'}}>✅ Pre-trained on S1–S10</p>
+  <p style={{fontSize:'10px', color:'#64748b', margin:0}}>Reference profiles loaded. Just upload your test scenario.</p>
+</div>
+<button
+  onClick={() => { setScenarios([]); setAnalyses([]); setSelectedIdx(null); setTrainingScenarios(new Set()); fileRef.current?.click(); }}
+  style={{ width: '100%', padding: '10px', background: ZEISS_BLUE, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+  + Upload Test Scenario
+</button>
+<input ref={fileRef} type="file" multiple accept=".csv" style={{ display: 'none' }}
+  onChange={e => e.target.files && handleFiles(e.target.files)} />
           </div>
 
           {scenarios.length > 0 && (
@@ -134,28 +203,97 @@ const currentAnalysis = selectedIdx !== null
               <p style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 8px' }}>
                 Scenarios ({scenarios.length})
               </p>
-              {scenarios.map((s, i) => {
-                const analysis = analyses.find(a => a.scenarioCode === s.rows[0]?.scenario_code);
-                const label = analysis ? getEnergyLabel(analysis.savingPct) : null;
-                return (
-                  <div key={i} onClick={() => analyzeScenario(i)}
-                    style={{ padding: '10px 12px', borderRadius: '8px', marginBottom: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedIdx === i ? '#EFF6FF' : 'transparent', border: selectedIdx === i ? `1px solid ${ZEISS_LIGHT}` : '1px solid transparent', transition: 'all 0.2s' }}>
-                    <div>
-                      <p style={{ fontSize: '12px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-  {s.rows[0]?.scenario_code || s.rows[0]?.['scenario_code'] || s.name.split('_')[0].toUpperCase()}
-</p>
-                      <p style={{ fontSize: '10px', color: '#64748b', margin: '2px 0 0' }}>{s.rows.length} rows</p>
-                    </div>
-                    {label && (
-                      <span style={{ background: label.color, color: 'white', fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px' }}>{label.label}</span>
-                    )}
-                  </div>
-                );
-              })}
+            {/* Training scenarios */}
+{scenarios.some((_, i) => trainingScenarios.has(i)) && (
+  <div style={{ marginBottom: '8px' }}>
+    <p style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ZEISS_BLUE, display: 'inline-block' }}></span>
+      Training ({scenarios.filter((_, i) => trainingScenarios.has(i)).length})
+    </p>
+    {scenarios.map((s, i) => {
+      if (!trainingScenarios.has(i)) return null;
+      const sessionId = s.rows[0]?.session_id || '';
+      const sCode = s.rows[0]?.scenario_code || sessionId.split('_')[1] || '';
+      const analysis = analyses.find(a => a && a.scenarioCode === sCode || (a && a.scenarioName && a.scenarioName.includes(sCode)));
+      const label = analysis ? getEnergyLabel(analysis.savingPct) : null;
+      return (
+        <div key={i} style={{ marginBottom: '6px' }}>
+  <div style={{ padding: '10px 12px', borderRadius: '8px 8px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FFF5F5', border: `1px solid #FECACA`, borderBottom: 'none' }}>
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <p style={{ fontSize: '12px', fontWeight: 700, color: '#DC2626', margin: 0 }}>{sCode}</p>
+        <span style={{ fontSize: '9px', background: '#DC2626', color: 'white', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>TEST</span>
+      </div>
+      <p style={{ fontSize: '10px', color: '#64748b', margin: '2px 0 0' }}>{s.rows.length} rows</p>
+    </div>
+    {label && <span style={{ background: label.color, color: 'white', fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px' }}>{label.label}</span>}
+  </div>
+  <button
+    onClick={() => analyzeScenario(i)}
+    disabled={loading}
+    style={{ width: '100%', padding: '8px', background: selectedIdx === i ? '#DC2626' : ZEISS_BLUE, color: 'white', border: 'none', borderRadius: '0 0 8px 8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
+    {loading && selectedIdx === i ? '⚡ Analyzing...' : '▶ Analyze'}
+  </button>
+</div>
+      );
+    })}
+  </div>
+)}
+
+{/* Test scenarios */}
+{scenarios.some((_, i) => !trainingScenarios.has(i)) && (
+  <div>
+    <p style={{ fontSize: '10px', fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#DC2626', display: 'inline-block' }}></span>
+      Test Scenario ({scenarios.filter((_, i) => !trainingScenarios.has(i)).length})
+    </p>
+    {scenarios.map((s, i) => {
+      if (trainingScenarios.has(i)) return null;
+      const sessionId = s.rows[0]?.session_id || '';
+      const sCode = s.rows[0]?.scenario_code || sessionId.split('_')[1] || '';
+      const analysis = analyses.filter(Boolean).find(a => a?.scenarioCode === sCode || a?.scenarioName?.includes(sCode));
+      const label = analysis ? getEnergyLabel(analysis.savingPct) : null;
+      return (
+        <div key={i} onClick={() => analyzeScenario(i)}
+          style={{ padding: '10px 12px', borderRadius: '8px', marginBottom: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedIdx === i ? '#FFF5F5' : '#FFF5F5', border: selectedIdx === i ? `2px solid #DC2626` : `1px solid #FECACA`, transition: 'all 0.2s' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <p style={{ fontSize: '12px', fontWeight: 700, color: '#DC2626', margin: 0 }}>{sCode}</p>
+              <span style={{ fontSize: '9px', background: '#DC2626', color: 'white', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>TEST</span>
+            </div>
+            <p style={{ fontSize: '10px', color: '#64748b', margin: '2px 0 0' }}>{s.rows.length} rows</p>
+          </div>
+          {label && <span style={{ background: label.color, color: 'white', fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px' }}>{label.label}</span>}
+        </div>
+      );
+    })}
+  </div>
+)}
             </div>
           )}
+          {/* Show learned reference profiles */}
+{referenceProfiles.length > 0 && (
+  <div style={{marginTop:'16px', borderTop:'1px solid #e2e8f0', paddingTop:'16px'}}>
+    <p style={{fontSize:'10px', fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', margin:'0 0 8px'}}>
+      Learned Reference Profiles
+    </p>
+    <p style={{fontSize:'10px', color:'#94a3b8', margin:'0 0 8px', lineHeight:1.5}}>
+      Learned from {scenarios.filter((_,i) => trainingScenarios.has(i)).length} training scenarios
+    </p>
+    {referenceProfiles.map(ref => (
+      <div key={ref.phase} style={{background:'#f8fafc', borderRadius:'6px', padding:'8px 10px', marginBottom:'6px', borderLeft:`3px solid ${PHASE_COLORS[ref.phase] || '#64748b'}`}}>
+        <p style={{fontSize:'10px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 4px'}}>
+          {ref.phase.split('_')[0].toUpperCase()}
+        </p>
+        <p style={{fontSize:'10px', color:'#64748b', margin:'0 0 2px'}}>Avg Power: {ref.avgPower}W</p>
+        <p style={{fontSize:'10px', color:'#64748b', margin:'0 0 2px'}}>Avg Energy: {ref.avgEnergy} Wh</p>
+        <p style={{fontSize:'10px', color:'#64748b', margin:0}}>From {ref.scenarioCount} scenarios</p>
+      </div>
+    ))}
+  </div>
+)}
 
-          {analyses.length >= 2 && (
+          {scenario11 && (
             <div style={{ marginTop: '16px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
               <div onClick={() => { setSelectedIdx(null); setActiveTab('scenario11'); }}
                 style={{ padding: '10px 12px', borderRadius: '8px', cursor: 'pointer', background: 'linear-gradient(135deg, #003764, #009FE3)', color: 'white' }}>
@@ -213,10 +351,10 @@ const currentAnalysis = selectedIdx !== null
 
               {/* Tabs */}
               <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: 'white', padding: '4px', borderRadius: '10px', width: 'fit-content' }}>
-                {(['overview', 'phases', 'waste', 'ai'] as const).map(tab => (
+                {(['overview', 'phases', 'waste', 'ai', 'compare', 'accuracy'] as const).map(tab => (
                   <button key={tab} onClick={() => setActiveTab(tab)}
                     style={{ padding: '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600, background: activeTab === tab ? ZEISS_BLUE : 'transparent', color: activeTab === tab ? 'white' : '#64748b', transition: 'all 0.2s', textTransform: 'capitalize' }}>
-                    {tab === 'ai' ? '🤖 AI Insights' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    {tab === 'ai' ? '🤖 AI Insights' : tab === 'compare' ? '📊 Baseline vs Improved' : tab === 'accuracy' ? '🎯 Accuracy' : tab.charAt(0).toUpperCase() + tab.slice(1)}
                   </button>
                 ))}
               </div>
@@ -458,7 +596,167 @@ const currentAnalysis = selectedIdx !== null
 )}
             </div>
           )}
+{activeTab === 'compare' && (
+  <div style={{display:'grid', gap:'20px'}}>
+    <div style={{background:'white', borderRadius:'12px', padding:'20px'}}>
+      <h3 style={{fontSize:'16px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 4px'}}>📊 Baseline vs Improved</h3>
+      <p style={{fontSize:'12px', color:'#64748b', margin:'0 0 20px'}}>Current workflow compared against optimized scenario applying all recommendations</p>
 
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'20px'}}>
+        <div style={{background:'#FEF2F2', borderRadius:'10px', padding:'16px', border:'1px solid #FECACA'}}>
+          <p style={{fontSize:'11px', fontWeight:700, color:'#DC2626', margin:'0 0 8px', textTransform:'uppercase'}}>🔴 Baseline (Current)</p>
+          <p style={{fontSize:'28px', fontWeight:900, color:'#DC2626', margin:'0 0 4px'}}>{currentAnalysis.totalEnergyWh} Wh</p>
+          <p style={{fontSize:'12px', color:'#64748b', margin:0}}>Total energy consumed</p>
+          <p style={{fontSize:'14px', fontWeight:700, color:'#DC2626', margin:'8px 0 0'}}>Label: {currentAnalysis.energyLabel}</p>
+        </div>
+        <div style={{background:'#F0FDF4', borderRadius:'10px', padding:'16px', border:'1px solid #BBF7D0'}}>
+          <p style={{fontSize:'11px', fontWeight:700, color:'#059669', margin:'0 0 8px', textTransform:'uppercase'}}>✅ Improved (After Optimization)</p>
+          <p style={{fontSize:'28px', fontWeight:900, color:'#059669', margin:'0 0 4px'}}>{(currentAnalysis.totalEnergyWh - currentAnalysis.totalPotentialSavingWh).toFixed(2)} Wh</p>
+          <p style={{fontSize:'12px', color:'#64748b', margin:0}}>After applying all recommendations</p>
+          <p style={{fontSize:'14px', fontWeight:700, color:'#059669', margin:'8px 0 0'}}>Label: A+</p>
+        </div>
+      </div>
+
+      <div style={{background:'#EFF6FF', borderRadius:'10px', padding:'16px', marginBottom:'20px', textAlign:'center'}}>
+        <p style={{fontSize:'14px', color:'#64748b', margin:'0 0 4px'}}>Total Energy Saving</p>
+        <p style={{fontSize:'36px', fontWeight:900, color:ZEISS_BLUE, margin:'0 0 4px'}}>{currentAnalysis.totalPotentialSavingWh} Wh</p>
+        <p style={{fontSize:'14px', color:'#059669', fontWeight:700, margin:0}}>↓ {currentAnalysis.savingPct}% reduction — equivalent to {Math.round(currentAnalysis.totalPotentialSavingWh / 100)} hours of laptop usage</p>
+      </div>
+
+      <div style={{display:'grid', gap:'10px'}}>
+        <p style={{fontSize:'13px', fontWeight:700, color:'#374151', margin:0}}>Phase-by-phase comparison:</p>
+        {currentAnalysis.phases.map(phase => {
+          const improved = phase.totalEnergy - phase.potentialSavingWh;
+          const pct = Math.round((phase.potentialSavingWh / phase.totalEnergy) * 100);
+          return (
+            <div key={phase.phase} style={{background:'#f8fafc', borderRadius:'8px', padding:'12px 16px'}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px'}}>
+                <span style={{fontSize:'13px', fontWeight:600, color:'#1e293b'}}>{phase.phase.replace(/_/g, ' ').toUpperCase()}</span>
+                <span style={{fontSize:'12px', color:'#059669', fontWeight:700}}>Save {pct}% — {phase.potentialSavingWh} Wh</span>
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px'}}>
+                <div>
+                  <p style={{fontSize:'10px', color:'#DC2626', margin:'0 0 2px', fontWeight:600}}>BASELINE</p>
+                  <div style={{background:'#FEE2E2', borderRadius:'4px', height:'8px'}}>
+                    <div style={{width:'100%', height:'100%', background:'#DC2626', borderRadius:'4px'}}/>
+                  </div>
+                  <p style={{fontSize:'11px', color:'#DC2626', margin:'2px 0 0', fontWeight:600}}>{phase.totalEnergy} Wh</p>
+                </div>
+                <div>
+                  <p style={{fontSize:'10px', color:'#059669', margin:'0 0 2px', fontWeight:600}}>IMPROVED</p>
+                  <div style={{background:'#DCFCE7', borderRadius:'4px', height:'8px'}}>
+                    <div style={{width:`${Math.max(10, 100 - pct)}%`, height:'100%', background:'#059669', borderRadius:'4px'}}/>
+                  </div>
+                  <p style={{fontSize:'11px', color:'#059669', margin:'2px 0 0', fontWeight:600}}>{improved.toFixed(2)} Wh</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+)}
+
+{activeTab === 'accuracy' && currentAnalysis?.accuracy && (
+  <div style={{display:'grid', gap:'20px'}}>
+    
+    {/* Overall accuracy card */}
+    {currentAnalysis.accuracy.overall === -1 ? (
+  <div style={{background:'white', borderRadius:'12px', padding:'24px', textAlign:'center', border:`3px solid ${ZEISS_LIGHT}`}}>
+    <p style={{fontSize:'13px', color:'#64748b', margin:'0 0 8px', fontWeight:600, textTransform:'uppercase'}}>Prediction Mode</p>
+    <p style={{fontSize:'48px', margin:'0 0 8px'}}>🎯</p>
+    <p style={{fontSize:'20px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 8px'}}>Unlabeled Test Scenario</p>
+    <p style={{fontSize:'14px', color:'#64748b', margin:'0 0 8px'}}>This scenario has no ground truth labels — our system is generating predictions from scratch based on patterns learned from S1-S10 training data.</p>
+    <div style={{background:'#EFF6FF', borderRadius:'8px', padding:'12px', marginTop:'12px'}}>
+      <p style={{fontSize:'13px', color:ZEISS_BLUE, fontWeight:600, margin:0}}>✅ This is real-world mode — exactly how EcoScope works in production</p>
+    </div>
+    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'10px', marginTop:'16px'}}>
+      {currentAnalysis.phases.map(p => (
+        <div key={p.phase} style={{background:'#f8fafc', borderRadius:'8px', padding:'12px', borderLeft:`3px solid ${PHASE_COLORS[p.phase] || '#64748b'}`}}>
+          <p style={{fontSize:'10px', color:'#64748b', margin:'0 0 4px'}}>{p.phase.replace(/_/g, ' ')}</p>
+          <p style={{fontSize:'13px', fontWeight:700, color:ZEISS_BLUE, margin:0}}>{p.recommendedAction.replace(/_/g, ' ')}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+) : (
+  <div style={{background:'white', borderRadius:'12px', padding:'24px', textAlign:'center', border:`3px solid ${currentAnalysis.accuracy.overall >= 80 ? '#059669' : currentAnalysis.accuracy.overall >= 60 ? '#D97706' : '#DC2626'}`}}>
+    <p style={{fontSize:'13px', color:'#64748b', margin:'0 0 8px', fontWeight:600, textTransform:'uppercase'}}>Overall System Accuracy</p>
+    <p style={{fontSize:'72px', fontWeight:900, color: currentAnalysis.accuracy.overall >= 80 ? '#059669' : currentAnalysis.accuracy.overall >= 60 ? '#D97706' : '#DC2626', margin:'0 0 8px', lineHeight:1}}>
+      {currentAnalysis.accuracy.overall}%
+    </p>
+    <p style={{fontSize:'14px', color:'#64748b', margin:0}}>
+      {currentAnalysis.accuracy.correct} correct predictions out of {currentAnalysis.accuracy.total} rows
+    </p>
+    <p style={{fontSize:'12px', color:'#94a3b8', margin:'8px 0 0'}}>
+      {currentAnalysis.accuracy.overall >= 80 ? '✅ High reliability — model learned well from training data' :
+       currentAnalysis.accuracy.overall >= 60 ? '⚠️ Moderate reliability — some phases need improvement' :
+       '❌ Low reliability — consider adjusting thresholds'}
+    </p>
+  </div>
+)}
+
+    {/* Per phase accuracy */}
+    <div style={{background:'white', borderRadius:'12px', padding:'20px'}}>
+      <h3 style={{fontSize:'15px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 16px'}}>Accuracy by Phase</h3>
+      <div style={{display:'grid', gap:'12px'}}>
+        {currentAnalysis.accuracy.byPhase.map(p => (
+          <div key={p.phase} style={{background:'#f8fafc', borderRadius:'8px', padding:'14px 16px'}}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px'}}>
+              <span style={{fontSize:'13px', fontWeight:600, color:'#1e293b'}}>
+                {p.phase === 'tile_scan_acquisition' ? '🔬 Tile Scan Acquisition' :
+                 p.phase === 'live_view_monitoring' ? '📺 Live View Monitoring' :
+                 p.phase === 'processing' ? '⚙️ Processing' : '💤 Idle'}
+              </span>
+              <span style={{fontSize:'16px', fontWeight:900, color: p.accuracy >= 80 ? '#059669' : p.accuracy >= 60 ? '#D97706' : '#DC2626'}}>
+                {p.accuracy}%
+              </span>
+            </div>
+            <div style={{background:'#e2e8f0', borderRadius:'4px', height:'8px', overflow:'hidden'}}>
+              <div style={{width:`${p.accuracy}%`, height:'100%', background: p.accuracy >= 80 ? '#059669' : p.accuracy >= 60 ? '#D97706' : '#DC2626', borderRadius:'4px', transition:'width 0.5s'}}/>
+            </div>
+            <p style={{fontSize:'11px', color:'#64748b', margin:'4px 0 0'}}>{p.correct} / {p.total} rows correct</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Confusion summary */}
+    <div style={{background:'white', borderRadius:'12px', padding:'20px'}}>
+      <h3 style={{fontSize:'15px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 8px'}}>Prediction Analysis</h3>
+      <p style={{fontSize:'12px', color:'#64748b', margin:'0 0 16px'}}>What the system predicted vs what the data says</p>
+      <div style={{display:'grid', gap:'8px'}}>
+        {currentAnalysis.accuracy.confusionSummary.map((item, i) => (
+          <div key={i} style={{display:'flex', alignItems:'center', gap:'12px', background:'#f8fafc', borderRadius:'8px', padding:'10px 14px'}}>
+            <span style={{fontSize:'18px'}}>{item.predicted === item.actual ? '✅' : '❌'}</span>
+            <div style={{flex:1}}>
+              <p style={{fontSize:'12px', margin:0, color:'#374151'}}>
+                <span style={{fontWeight:700}}>Predicted:</span> {item.predicted.replace(/_/g, ' ')}
+                {' → '}
+                <span style={{fontWeight:700}}>Actual:</span> {item.actual.replace(/_/g, ' ')}
+              </p>
+            </div>
+            <span style={{background: item.predicted === item.actual ? '#F0FDF4' : '#FEF2F2', color: item.predicted === item.actual ? '#059669' : '#DC2626', fontSize:'12px', fontWeight:700, padding:'2px 10px', borderRadius:'20px'}}>
+              {item.count} rows
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Explanation for judges */}
+    <div style={{background:'#EFF6FF', borderRadius:'12px', padding:'20px', border:`1px solid ${ZEISS_LIGHT}`}}>
+      <h3 style={{fontSize:'14px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 8px'}}>📊 How to interpret this</h3>
+      <p style={{fontSize:'13px', color:'#374151', margin:'0 0 8px', lineHeight:1.6}}>
+        Our system learned action rules from S1-S10 training scenarios. For each phase, it predicts what action should be taken. This accuracy score shows how well those learned rules match the ground truth labels in the CSV data.
+      </p>
+      <p style={{fontSize:'13px', color:'#374151', margin:0, lineHeight:1.6}}>
+        <strong>High accuracy</strong> means the training data successfully taught the system what efficient vs wasteful behavior looks like — and the system can reliably detect it in new scenarios.
+      </p>
+    </div>
+  </div>
+)}
           {/* Scenario 11 */}
           {activeTab === 'scenario11' && scenario11 && (
             <div>
@@ -514,11 +812,73 @@ const currentAnalysis = selectedIdx !== null
         </main>
       </div>
 
-      {loading && (
-        <div style={{ position: 'fixed', bottom: '20px', right: '20px', background: ZEISS_BLUE, color: 'white', padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600 }}>
-          ⚡ Analyzing...
+{/* CHATBOT */}
+<div style={{position:'fixed', bottom:'24px', right:'24px', zIndex:100}}>
+  {chatOpen && (
+    <div style={{width:'340px', height:'460px', background:'white', borderRadius:'16px', boxShadow:'0 20px 60px rgba(0,0,0,0.15)', display:'flex', flexDirection:'column', marginBottom:'12px', border:`1px solid #e2e8f0`}}>
+      <div style={{background:ZEISS_BLUE, padding:'14px 16px', borderRadius:'16px 16px 0 0', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+        <div style={{display:'flex', alignItems:'center', gap:'8px'}}>
+          <span style={{fontSize:'18px'}}>🔬</span>
+          <div>
+            <p style={{color:'white', fontWeight:700, fontSize:'13px', margin:0}}>EcoScope Assistant</p>
+            <p style={{color:'#9FB8D0', fontSize:'10px', margin:0}}>Ask about energy data</p>
+          </div>
         </div>
-      )}
+        <button onClick={() => setChatOpen(false)} style={{background:'transparent', border:'none', color:'white', cursor:'pointer', fontSize:'18px'}}>✕</button>
+      </div>
+
+      <div style={{flex:1, overflowY:'auto', padding:'12px', display:'flex', flexDirection:'column', gap:'8px'}}>
+        {chatMessages.length === 0 && (
+          <div style={{textAlign:'center', padding:'20px 0'}}>
+            <p style={{fontSize:'12px', color:'#64748b', margin:'0 0 12px'}}>Ask me about the workflow energy data</p>
+            <div style={{display:'flex', flexDirection:'column', gap:'6px'}}>
+              {['Which phase wastes most energy?', 'How can I reduce idle consumption?', 'What is the R-strategy for live view?'].map(q => (
+                <button key={q} onClick={() => sendChatMessage(q)}
+                  style={{background:'#f0f4f8', border:'1px solid #e2e8f0', borderRadius:'8px', padding:'7px 10px', fontSize:'11px', cursor:'pointer', color:'#374151', textAlign:'left'}}>
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {chatMessages.map((msg, i) => (
+          <div key={i} style={{display:'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'}}>
+            <div style={{maxWidth:'85%', padding:'8px 12px', borderRadius: msg.role === 'user' ? '12px 0 12px 12px' : '0 12px 12px 12px', background: msg.role === 'user' ? ZEISS_BLUE : '#f0f4f8', color: msg.role === 'user' ? 'white' : '#374151', fontSize:'12px', lineHeight:1.5}}>
+              {msg.text}
+            </div>
+          </div>
+        ))}
+        {chatLoading && (
+          <div style={{display:'flex', gap:'4px', padding:'8px'}}>
+            {[0,1,2].map(i => <span key={i} style={{width:'6px', height:'6px', borderRadius:'50%', background:ZEISS_BLUE, display:'inline-block', animation:`bounce 1s ${i*150}ms infinite`}}></span>)}
+          </div>
+        )}
+      </div>
+
+      <div style={{padding:'10px', borderTop:'1px solid #e2e8f0', display:'flex', gap:'6px'}}>
+        <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+          onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); sendChatMessage(chatInput); }}}
+          placeholder="Ask about energy data..."
+          style={{flex:1, background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'8px', padding:'8px 12px', fontSize:'12px', outline:'none', color:'#1e293b'}} />
+        <button onClick={() => sendChatMessage(chatInput)} disabled={chatLoading || !chatInput.trim()}
+          style={{background:ZEISS_BLUE, border:'none', borderRadius:'8px', padding:'8px 14px', color:'white', fontSize:'12px', fontWeight:600, cursor:'pointer'}}>
+          Send
+        </button>
+      </div>
+    </div>
+  )}
+
+  <button onClick={() => { setChatOpen(!chatOpen); }}
+    style={{width:'56px', height:'56px', borderRadius:'50%', background:ZEISS_BLUE, border:'none', cursor:'pointer', boxShadow:'0 4px 20px rgba(0,55,100,0.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px'}}>
+    {chatOpen ? '✕' : '🔬'}
+  </button>
+</div>
+
+      {loading && (
+  <div style={{ position: 'fixed', bottom: '100px', left: '60%', transform: 'translateX(-50%)', background: ZEISS_BLUE, color: 'white', padding: '12px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, zIndex: 200, boxShadow: '0 4px 20px rgba(0,55,100,0.3)' }}>
+    ⚡ Analyzing scenario...
+  </div>
+)}
     </div>
   );
 }

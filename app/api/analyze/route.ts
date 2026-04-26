@@ -1,20 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeScenario, buildReferenceProfiles, generateScenario11, ScenarioAnalysis } from '@/app/lib/analyze';
+import { PRETRAINED_PROFILES } from '@/app/lib/trainingProfiles';
+import { analyzeScenario, buildReferenceProfiles, generateScenario11, calculateAccuracy, ScenarioAnalysis } from '@/app/lib/analyze';
 export const runtime = 'edge';
+console.log('=== ANALYZE ROUTE CALLED ===');
+console.log('Request received');
 export async function POST(request: NextRequest) {
   try {
     const { rows, allTrainingRows, allAnalyses } = await request.json();
 
     // Build reference profiles from ALL training data
     const referenceProfiles = allTrainingRows && allTrainingRows.length > 0
-      ? buildReferenceProfiles(allTrainingRows)
-      : undefined;
+  ? buildReferenceProfiles(allTrainingRows)
+  : PRETRAINED_PROFILES;
 
     // Analyze current scenario against reference profiles
     const analysis = analyzeScenario(rows, referenceProfiles);
 
     let geminiInsights = '';
     try {
+      console.log('Starting Gemini call...');
       const refSummary = referenceProfiles
         ? referenceProfiles.map(r =>
             `${r.phase}: efficient reference = ${r.avgPower}W avg power, ${r.avgEnergy} Wh energy (learned from ${r.scenarioCount} training scenarios)`
@@ -60,9 +64,9 @@ HOW: [concrete steps - 2 sentences max]
 SAVING: [estimated Wh]
 R-STRATEGY: [R1 Rethink / R2 Reduce / R3 Reuse / R4 Repair / R5 Refurbish]
 ---`;
-
+const apiKey = process.env.GEMINI_API_KEY;
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -71,19 +75,29 @@ R-STRATEGY: [R1 Rethink / R2 Reduce / R3 Reuse / R4 Repair / R5 Refurbish]
           })
         }
       );
-
       const data = await response.json();
+console.log('Full Gemini data:', JSON.stringify(data).slice(0, 500));
+      
       geminiInsights = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      console.log('Gemini response length:', geminiInsights.length);
+console.log('Gemini first 100 chars:', geminiInsights.slice(0, 100));
     } catch (e) {
-      geminiInsights = 'AI recommendations unavailable.';
+     console.error('Gemini failed:', e);
+  geminiInsights = 'AI recommendations unavailable: ' + String(e);
     }
 
     let scenario11 = null;
-    if (allAnalyses && allAnalyses.length > 0) {
-      scenario11 = generateScenario11([...allAnalyses, analysis]);
-    }
-
-    return NextResponse.json({ analysis, geminiInsights, scenario11, referenceProfiles });
+try {
+  scenario11 = generateScenario11([analysis]);
+} catch(e) {
+  console.error('S11 error:', e);
+}
+try {
+  analysis.accuracy = calculateAccuracy(rows, analysis.phases);
+} catch (e) {
+  console.error('Accuracy error:', e);
+}
+return NextResponse.json({ analysis, geminiInsights, scenario11, referenceProfiles });
 
   } catch (error) {
     console.error('Analysis error:', error);

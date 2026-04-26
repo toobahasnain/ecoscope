@@ -42,6 +42,15 @@ export interface ScenarioAnalysis {
   phases: PhaseStats[];
   wasteFlags: WasteFlag[];
   referenceProfiles?: ReferenceProfile[];
+  accuracy?: AccuracyResult;
+}
+
+export interface AccuracyResult {
+  overall: number;
+  correct: number;
+  total: number;
+  byPhase: { phase: string; accuracy: number; correct: number; total: number }[];
+  confusionSummary: { predicted: string; actual: string; count: number }[];
 }
 
 export interface WasteFlag {
@@ -279,7 +288,8 @@ export function generateScenario11(analyses: ScenarioAnalysis[]): ScenarioAnalys
     let bestPhase: PhaseStats | null = null;
     let lowestEnergy = Infinity;
     for (const analysis of analyses) {
-      const p = analysis.phases.find(ph => ph.phase === phase);
+  if (!analysis || !analysis.phases) continue;
+  const p = analysis.phases.find(ph => ph.phase === phase);
       if (p && p.totalEnergy < lowestEnergy) {
         lowestEnergy = p.totalEnergy;
         bestPhase = p;
@@ -301,5 +311,66 @@ export function generateScenario11(analyses: ScenarioAnalysis[]): ScenarioAnalys
     energyLabel: 'A++',
     phases: bestPhases,
     wasteFlags: [],
+  };}
+export function calculateAccuracy(
+  rows: Record<string, string>[],
+  phases: PhaseStats[]
+): AccuracyResult {
+  const firstRow = rows[0] || {};
+const actionKey = Object.keys(firstRow).find(k => k.trim().toLowerCase() === 'recommended_action') || 'recommended_action';
+const hasLabels = rows.length > 0 && 'recommended_action' in rows[0];
+
+  const phaseNames = ['tile_scan_acquisition', 'live_view_monitoring', 'processing', 'idle'];
+  let totalCorrect = 0;
+  let totalRows = 0;
+  const byPhase: AccuracyResult['byPhase'] = [];
+  const confusionMap = new Map<string, number>();
+
+  for (const phaseName of phaseNames) {
+    const phaseRows = rows.filter(r => r.workflow_phase === phaseName);
+    if (phaseRows.length === 0) continue;
+
+    const phaseStats = phases.find(p => p.phase === phaseName);
+    const predicted = phaseStats?.recommendedAction || 'no_action';
+
+    let phaseCorrect = 0;
+    for (const row of phaseRows) {
+      
+      const actual = (row[actionKey] || 'no_action').trim();
+      const key = `${predicted}|||${actual}`;
+      confusionMap.set(key, (confusionMap.get(key) || 0) + 1);
+      if (predicted === actual) {
+        phaseCorrect++;
+        totalCorrect++;
+      }
+      totalRows++;
+    }
+
+    byPhase.push({
+      phase: phaseName,
+      accuracy: Math.round((phaseCorrect / phaseRows.length) * 100),
+      correct: phaseCorrect,
+      total: phaseRows.length
+    });
+  }
+
+  const confusionSummary: AccuracyResult['confusionSummary'] = [];
+  for (const [key, count] of confusionMap.entries()) {
+    const [predicted, actual] = key.split('|||');
+    confusionSummary.push({ predicted, actual, count });
+  }
+  confusionSummary.sort((a, b) => b.count - a.count);
+
+  const activePhases = byPhase.filter(p => p.total > 0);
+const avgPhaseAccuracy = activePhases.length > 0
+  ? Math.round(activePhases.reduce((s, p) => s + p.accuracy, 0) / activePhases.length)
+  : 0;
+
+return {
+  overall: avgPhaseAccuracy,
+    correct: totalCorrect,
+    total: totalRows,
+    byPhase,
+    confusionSummary: confusionSummary.slice(0, 6)
   };
 }
