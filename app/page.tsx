@@ -693,7 +693,7 @@ const currentAnalysis = selectedIdx !== null
   <div style={{display:'grid', gap:'20px'}}>
     
     {/* Overall accuracy card */}
-    {currentAnalysis.accuracy.overall === -1 ? (
+    {currentAnalysis.accuracy?.overall === -1 ? (
   <div style={{background:'white', borderRadius:'12px', padding:'24px', textAlign:'center', border:`3px solid ${ZEISS_LIGHT}`}}>
     <p style={{fontSize:'13px', color:'#64748b', margin:'0 0 8px', fontWeight:600, textTransform:'uppercase'}}>Prediction Mode</p>
     <p style={{fontSize:'48px', margin:'0 0 8px'}}>🎯</p>
@@ -712,17 +712,17 @@ const currentAnalysis = selectedIdx !== null
     </div>
   </div>
 ) : (
-  <div style={{background:'white', borderRadius:'12px', padding:'24px', textAlign:'center', border:`3px solid ${currentAnalysis.accuracy.overall >= 80 ? '#059669' : currentAnalysis.accuracy.overall >= 60 ? '#D97706' : '#DC2626'}`}}>
+  <div style={{background:'white', borderRadius:'12px', padding:'24px', textAlign:'center', border:`3px solid ${currentAnalysis.accuracy?.overall >= 80 ? '#059669' : currentAnalysis.accuracy?.overall >= 60 ? '#D97706' : '#DC2626'}`}}>
     <p style={{fontSize:'13px', color:'#64748b', margin:'0 0 8px', fontWeight:600, textTransform:'uppercase'}}>Overall System Accuracy</p>
-    <p style={{fontSize:'72px', fontWeight:900, color: currentAnalysis.accuracy.overall >= 80 ? '#059669' : currentAnalysis.accuracy.overall >= 60 ? '#D97706' : '#DC2626', margin:'0 0 8px', lineHeight:1}}>
-      {currentAnalysis.accuracy.overall}%
+    <p style={{fontSize:'72px', fontWeight:900, color: currentAnalysis.accuracy?.overall >= 80 ? '#059669' : currentAnalysis.accuracy?.overall >= 60 ? '#D97706' : '#DC2626', margin:'0 0 8px', lineHeight:1}}>
+      {currentAnalysis.accuracy?.overall}%
     </p>
     <p style={{fontSize:'14px', color:'#64748b', margin:0}}>
-      {currentAnalysis.accuracy.correct} correct predictions out of {currentAnalysis.accuracy.total} rows
+      {currentAnalysis.accuracy?.correct} correct predictions out of {currentAnalysis.accuracy?.total} rows
     </p>
     <p style={{fontSize:'12px', color:'#94a3b8', margin:'8px 0 0'}}>
-      {currentAnalysis.accuracy.overall >= 80 ? '✅ High reliability — model learned well from training data' :
-       currentAnalysis.accuracy.overall >= 60 ? '⚠️ Moderate reliability — some phases need improvement' :
+      {currentAnalysis.accuracy?.overall >= 80 ? '✅ High reliability — model learned well from training data' :
+       currentAnalysis.accuracy?.overall >= 60 ? '⚠️ Moderate reliability — some phases need improvement' :
        '❌ Low reliability — consider adjusting thresholds'}
     </p>
   </div>
@@ -733,7 +733,7 @@ const currentAnalysis = selectedIdx !== null
     <div style={{background:'white', borderRadius:'12px', padding:'20px'}}>
       <h3 style={{fontSize:'15px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 16px'}}>Accuracy by Phase</h3>
       <div style={{display:'grid', gap:'12px'}}>
-        {currentAnalysis.accuracy.byPhase.map(p => (
+        {currentAnalysis.accuracy?.byPhase.map(p => (
           <div key={p.phase} style={{background:'#f8fafc', borderRadius:'8px', padding:'14px 16px'}}>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px'}}>
               <span style={{fontSize:'13px', fontWeight:600, color:'#1e293b'}}>
@@ -761,7 +761,7 @@ const currentAnalysis = selectedIdx !== null
       <h3 style={{fontSize:'15px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 8px'}}>Prediction Analysis</h3>
       <p style={{fontSize:'12px', color:'#64748b', margin:'0 0 16px'}}>What the system predicted vs what the data says</p>
       <div style={{display:'grid', gap:'8px'}}>
-        {currentAnalysis.accuracy.confusionSummary.map((item, i) => (
+        {currentAnalysis.accuracy?.confusionSummary.map((item, i) => (
           <div key={i} style={{display:'flex', alignItems:'center', gap:'12px', background:'#f8fafc', borderRadius:'8px', padding:'10px 14px'}}>
             <span style={{fontSize:'18px'}}>{item.predicted === item.actual ? '✅' : '❌'}</span>
             <div style={{flex:1}}>
