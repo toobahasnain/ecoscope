@@ -625,9 +625,9 @@ const currentAnalysis = selectedIdx !== null
     )}
   </div>
 )}
-            </div>
-          )}
-{activeTab === 'compare' && currentAnalysis && (
+           
+         
+{activeTab === 'compare' && (
   <div style={{display:'grid', gap:'20px'}}>
     <div style={{background:'white', borderRadius:'12px', padding:'20px'}}>
       <h3 style={{fontSize:'16px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 4px'}}>📊 Baseline vs Improved</h3>
@@ -726,7 +726,8 @@ const currentAnalysis = selectedIdx !== null
        '❌ Low reliability — consider adjusting thresholds'}
     </p>
   </div>
-)}
+  )}
+
 
     {/* Per phase accuracy */}
     <div style={{background:'white', borderRadius:'12px', padding:'20px'}}>
@@ -752,7 +753,9 @@ const currentAnalysis = selectedIdx !== null
         ))}
       </div>
     </div>
-
+</div>
+)}
+            
     {/* Confusion summary */}
     <div style={{background:'white', borderRadius:'12px', padding:'20px'}}>
       <h3 style={{fontSize:'15px', fontWeight:700, color:ZEISS_BLUE, margin:'0 0 8px'}}>Prediction Analysis</h3>
@@ -786,9 +789,9 @@ const currentAnalysis = selectedIdx !== null
         <strong>High accuracy</strong> means the training data successfully taught the system what efficient vs wasteful behavior looks like — and the system can reliably detect it in new scenarios.
       </p>
     </div>
-  </div>
-)}
-          {/* Scenario 11 */}
+  </div>)}
+
+      {/* Scenario 11 */}
           {activeTab === 'scenario11' && scenario11 && (
             <div>
               <div style={{ background: `linear-gradient(135deg, ${ZEISS_BLUE}, ${ZEISS_LIGHT})`, borderRadius: '16px', padding: '28px', color: 'white', marginBottom: '24px' }}>
@@ -842,7 +845,7 @@ const currentAnalysis = selectedIdx !== null
           )}
         </main>
       </div>
-
+       
 {/* CHATBOT */}
 <div style={{position:'fixed', bottom:'24px', right:'24px', zIndex:100}}>
   {chatOpen && (
